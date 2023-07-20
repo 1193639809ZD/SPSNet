@@ -3,7 +3,7 @@
 数据集地址：http://gpcv.whu.edu.cn/data/building_dataset.html
 
 ```python
-# 将下载到的数据集放到data文件夹下，命名为WHU_Building_Dataset
+# 新建data文件夹，将下载到的数据集放到data文件夹下，命名为WHU_Building_Dataset
 # 运行whu_dataset_preprocess.py文件
 python tools/whu_dataset_preprocess.py
 ```
