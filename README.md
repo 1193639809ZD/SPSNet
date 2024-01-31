@@ -1,6 +1,6 @@
 # 数据集准准备
 ## WHU building dataset
-数据集地址：http://gpcv.whu.edu.cn/data/building_dataset.html
+数据集：[下载地址](http://gpcv.whu.edu.cn/data/WHU_aerial_0.2/WHU_aerial_0.2.zip)
 
 ```python
 # 新建data文件夹，将下载到的数据集放到data文件夹下，命名为WHU_Building_Dataset
