@@ -1,0 +1,12 @@
+# python的编码文件
+__pycache__/
+
+# 模型文件
+checkpoints/
+weights/
+
+# 可视化图片数据
+building-example/
+
+# 特定文件类型
+.ipynb
