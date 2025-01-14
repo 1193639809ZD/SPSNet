@@ -60,7 +60,7 @@ def main():
     if args.dataset == "WHU_Building_Dataset":
         dataset_val = WHUBuilding(root=config.whu, mode=args.mode)
     elif args.dataset == "Massachusetts_Buildings_Dataset":
-        dataset_val = MassachuseetsBuilding(root=config.massachuseets, version=args.version, mode=args.mode)
+        dataset_val = MassachuseetsBuilding(root=config.mas_building, version=args.version, mode=args.mode)
     val_dataloader = DataLoader(dataset_val, batch_size=args.batch_size, num_workers=2, shuffle=False)
 
     metric = SegmentationMetric(2, device)

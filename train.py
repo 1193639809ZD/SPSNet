@@ -1,7 +1,7 @@
 import argparse
 import os
 import warnings
-
+from pathlib import Path
 import numpy as np
 import torch
 from torch import optim
@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from torch.nn import functional as F
 from config import config
-from datasets import WHUBuilding, MassachuseetsBuilding, YqTechDataset
+from datasets import WHUBuilding, MassachuseetsBuilding, YqTechDataset, SegDataset, CombSegDataset
 from model import spsnet, UNetV2, UNet, BRRNet, deeplabv3plus, SegNet
 
 from utils import metrics
@@ -55,10 +55,10 @@ def main(name):
     else:
         print(f"不支持该模型：{args.model_name}")
 
-    DLoss = DiceLoss()
+    # DLoss = DiceLoss()
     # BCELoss = torch.nn.BCELoss()
-    CELoss = torch.nn.CrossEntropyLoss()
-    ELoss = EntropyLoss()
+    CELoss = torch.nn.CrossEntropyLoss(ignore_index=0)
+    # ELoss = EntropyLoss()
 
     # 加载optimizer
     optimizer = optim.__dict__[args.optimizer](model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -78,7 +78,7 @@ def main(name):
         # start_epoch = checkpoint["epoch"]
         best_miou = checkpoint["best_miou"]
         model.load_state_dict(checkpoint["state_dict"], strict=False)
-        optimizer.load_state_dict(checkpoint["optimizer"])
+        # optimizer.load_state_dict(checkpoint["optimizer"])
         print("=> loaded checkpoint '{}' (epoch {})".format(args.pretrain, checkpoint["epoch"]))
         # 删除checkpoint
         del checkpoint
@@ -88,12 +88,31 @@ def main(name):
         dataset_train = WHUBuilding(root=config.whu, mode="train")
         dataset_val = WHUBuilding(root=config.whu, mode="test")
     elif args.dataset == "Massachusetts_Buildings_Dataset":
-        dataset_train = MassachuseetsBuilding(root=config.massachuseets, version=args.version, mode="train")
-        dataset_val = MassachuseetsBuilding(root=config.massachuseets, version=args.version, mode="test")
+        dataset_train = MassachuseetsBuilding(root=config.mas_building, version=args.version, mode="train")
+        dataset_val = MassachuseetsBuilding(root=config.mas_building, version=args.version, mode="test")
+    elif args.dataset == "Massachusetts":
+        dataset_train = SegDataset(root=config.mas, mode="train")
+        dataset_val = SegDataset(root=config.mas, mode="test")
+    elif args.dataset == "Wayback":
+        dataset_train = SegDataset(root=config.wayback, mode="train")
+        dataset_val = SegDataset(root=config.wayback, mode="test")
     elif args.dataset == "YqTech":
-        # 子数据集：massachusetts、deepglobe、wayback
-        dataset_train = YqTechDataset(root=config.yqtech, sub=args.yqsub, mode="train")
-        dataset_val = YqTechDataset(root=config.yqtech, sub=args.yqsub, mode="test")
+        dataset_train = CombSegDataset(
+            datasets=[
+                Path("/home/eveleaf/MyDataset/wayback"),
+                Path("/home/eveleaf/MyDataset/deepglobe_road_extraction/al_anno"),
+                Path("/home/eveleaf/MyDataset/massachusetts"),
+            ],
+            mode="train",
+        )
+        dataset_val = CombSegDataset(
+            datasets=[
+                Path("/home/eveleaf/MyDataset/wayback"),
+                Path("/home/eveleaf/MyDataset/deepglobe_road_extraction/al_anno"),
+                Path("/home/eveleaf/MyDataset/massachusetts"),
+            ],
+            mode="test",
+        )
     train_dataloader = DataLoader(dataset_train, batch_size=args.batch_size, num_workers=2, shuffle=True)
     val_dataloader = DataLoader(dataset_val, batch_size=2, num_workers=2, shuffle=False)
 
@@ -102,19 +121,19 @@ def main(name):
 
         # step the learning rate scheduler
         lr_scheduler.step()
-        train_dice = metrics.MetricTracker()
-        # train_bce = metrics.MetricTracker()
+        # train_dice = metrics.MetricTracker()
         train_ce = metrics.MetricTracker()
         # train_e = metrics.MetricTracker()
         train_loss = metrics.MetricTracker()
 
         # iterate over data
         loader = tqdm(train_dataloader, desc=f"training Epoch {epoch + 1}/{args.epochs}")
+
         for idx, data in enumerate(loader):
 
             # get the image and wrap in Variable
             image = data["image"].to(device)
-            mask = data["mask"].to(device, torch.int64)
+            mask = data["label"].to(device, torch.int64)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -124,22 +143,21 @@ def main(name):
             predict = model(image).softmax(dim=1)
             # 计算损失
             # dice_score = DLoss(predict, mask.unsqueeze(dim=1))
-            # bce_score = BCELoss(predict, mask.unsqueeze(dim=1).float())
-            mask = F.one_hot(mask, num_classes=args.out_channel).permute(0, 3, 1, 2)
-            dice_score = DLoss(predict, mask)
-            ce_score = CELoss(predict, mask.float())
+            # 需要注意，ce损失，在使用标签忽略功能是，必须是标签状态，不能是one-hot状态，one-hot状态必须是float
+            ce_score = CELoss(predict, mask)
+            # mask = F.one_hot(mask, num_classes=args.out_channel).permute(0, 3, 1, 2)
+            # dice_score = DLoss(predict, mask)
 
             # e_score = ELoss(predict)
-            # loss = bce_score + dice_score + e_score
             # loss = ce_score + dice_score + e_score
-            loss = ce_score + dice_score
+            # loss = ce_score + dice_score
+            loss = ce_score
 
             # backward
             loss.backward()
             optimizer.step()
             # 采用dice系数评价
-            train_dice.update(dice_score.item(), predict.size(0))
-            # train_bce.update(ce_score.item(), predict.size(0))
+            # train_dice.update(dice_score.item(), predict.size(0))
             train_ce.update(ce_score.item(), predict.size(0))
             # train_e.update(e_score.item(), predict.size(0))
             train_loss.update(loss.data.item(), predict.size(0))
@@ -148,9 +166,8 @@ def main(name):
                 loader.set_postfix(
                     **{
                         "lr": optimizer.param_groups[0]["lr"],
-                        # "bce_score": "{:.4f}".format(train_bce.avg),
                         "ce_score": "{:.4f}".format(train_ce.avg),
-                        "dice_score": "{:.4f}".format(train_dice.avg),
+                        # "dice_score": "{:.4f}".format(train_dice.avg),
                         # "e_score": "{:.4f}".format(train_e.avg),
                         "Loss": "{:.4f}".format(train_loss.avg),
                     }
@@ -196,11 +213,8 @@ def main(name):
 
 def validation(valid_loader, model):
     # 声明需要用到的评价矩阵
-    metric = SegmentationMetric(args.out_channel, device)
-    if args.out_channel == 1:
-        BCELoss = torch.nn.BCELoss()
-    else:
-        CELoss = torch.nn.CrossEntropyLoss()
+    metric = SegmentationMetric(args.out_channel, device, ignore_labels=[0])
+    CELoss = torch.nn.CrossEntropyLoss(ignore_index=0)
     val_loss = metrics.MetricTracker()
 
     # 切换模式
@@ -209,79 +223,60 @@ def validation(valid_loader, model):
     loader = tqdm(valid_loader, desc="validation")
     for idx, data in enumerate(loader):
         image = data["image"].to(device)
-        mask = data["mask"].to(device, torch.int64)
-        # 输出结果, 计算损失
-        if args.out_channel == 1:
-            predict = model(image).sigmoid()
-            bce_score = BCELoss(predict, mask.unsqueeze(dim=1).float())
-            val_loss.update(bce_score.item(), predict.size(0))
-            # 计算混淆矩阵
-            metric.add_batch((predict > 0.5).squeeze(dim=1).to(torch.int), mask)
-        else:
-            predict = model(image).softmax(dim=1)
-            ce_score = CELoss(predict, mask)
-            val_loss.update(ce_score.item(), predict.size(0))
-            # 计算混淆矩阵
-            metric.add_batch(predict.argmax(dim=1), mask)
+        mask = data["label"].to(device, torch.int64)
+        predict = model(image).softmax(dim=1)
+        ce_score = CELoss(predict, mask)
+        val_loss.update(ce_score.item(), predict.size(0))
+        # 计算混淆矩阵
+        metric.add_batch(predict.argmax(dim=1), mask)
 
         if idx % args.logging_step == 0:
             loader.set_postfix(**{"Loss": "{:.4f}".format(val_loss.avg)})
 
-    # print(metric.confusion_matrix)
-    print(metric.intersection_over_union().tolist())
     # 创建指标列表
-    index_list = np.array([])
-    # label_name = [
-    #     "acc",
-    #     "iou_building",
-    #     "f1_building",
-    #     "pre_building",
-    #     "rec_building",
-    #     "miou",
-    #     "val_loss",
-    # ]
-    # # 添加acc
-    # index_list = np.append(index_list, metric.pixel_accuracy().item())
-    # # 添加class_iou
-    # index_list = np.append(index_list, metric.intersection_over_union().tolist()[1])
-    # # 添加f1-score
-    # index_list = np.append(index_list, metric.f1_score().tolist()[1])
-    # # 添加class_pre
-    # index_list = np.append(index_list, metric.class_pixel_precision().tolist()[1])
-    # # 添加class_rec
-    # index_list = np.append(index_list, metric.class_pixel_recall().tolist()[1])
-    # # 添加miou
-    # index_list = np.append(index_list, metric.mean_intersection_over_union().item())
-    # # 添加val_loss
-    # index_list = np.append(index_list, val_loss.avg)
-
-    label_name = [
-        # "iou",
+    index_values = np.array([])
+    # 指标名
+    index_keys = [
+        "forest",
+        "vegetation",
+        "water",
+        "building",
+        "road",
+        "hardened_surface",
+        "bareland",
+        "grassland",
+        "other",
         "miou",
-        "val_loss",
     ]
-    # index_list = np.append(index_list, metric.intersection_over_union().tolist())
-    index_list = np.append(index_list, metric.mean_intersection_over_union().item())
-    index_list = np.append(index_list, val_loss.avg)
-    dict_index = dict(zip(label_name, index_list))
-
+    # 添加class_iou
+    index_values = np.append(index_values, metric.intersection_over_union().tolist()[1:])
+    # 添加miou
+    index_values = np.append(index_values, metric.mean_intersection_over_union().item())
+    index_dict = {key: round(value, 4) for key, value in zip(index_keys, index_values)}
+    # print(index_dict)
     # 打开model的训练模式
     model.train()
 
-    return dict_index
+    return index_dict
 
 
 if __name__ == "__main__":
     # 获取命令行参数
     parser = argparse.ArgumentParser(description="Road and Building Extraction")
     parser.add_argument("--checkpoints", type=str, default="checkpoints", help="checkpoint文件夹路径")
-    parser.add_argument("--name", default="umobilenet-yq-deep", type=str, help="Experiment name")
+    parser.add_argument("--name", default="umobilenet-yq", type=str, help="Experiment name")
     # 数据集设置
     parser.add_argument(
         "--dataset",
         type=str,
         default="YqTech",
-        choices=["Massachusetts_Buildings_Dataset", "WHU_Building_Dataset", "YqTech"],
+        choices=[
+            "Massachusetts_Buildings_Dataset",
+            "WHU_Building_Dataset",
+            "YqTech",
+            "Massachusetts",
+            "Wayback",
+        ],
     )
     parser.add_argument("--version", default="512_15", type=str, help="数据集的版本")
     parser.add_argument(
@@ -309,7 +304,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pretrain",
-        default="checkpoints/umobilenet-yq-deep/best_model.pt",
+        default="",
         help="path to latest checkpoint (default: none)",
     )
     parser.add_argument("--in_channel", default=3, type=int, help="the number of input data channel")
@@ -333,7 +328,7 @@ if __name__ == "__main__":
         help="number of total epochs to run",
     )
     parser.add_argument("--validation_interval", type=int, default=1)
-    parser.add_argument("--logging_step", type=int, default=20)
+    parser.add_argument("--logging_step", type=int, default=10)
 
     args = parser.parse_args()
 

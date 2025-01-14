@@ -9,6 +9,9 @@ from pathlib import Path
 class config:
     log = "logs"
     checkpoints = "checkpoints"
+    datasets = Path("/home/eveleaf/MyDataset")
     whu = Path("/home/eveleaf/MyDataset/whu")
-    massachuseets = Path("/home/eveleaf/MyDataset/massachusetts_building")
+    mas = Path("/home/eveleaf/MyDataset/massachusetts")
+    mas_building = Path("/home/eveleaf/MyDataset/massachusetts_building")
     yqtech = Path("/home/eveleaf/MyDataset/yqdataset")
+    wayback = Path("/home/eveleaf/MyDataset/wayback")

@@ -13,6 +13,13 @@ predict 和 label 应该都是(batch_size, img_size, img_size), 里面是标签�
 # 添加Remove background选项，去除ignore_labels选项
 class SegmentationMetric(object):
     def __init__(self, num_class, device, ignore_labels=None):
+        """混淆矩阵计算类
+
+        Args:
+            num_class (int): 一共有多少类，包括忽略的类别
+            device (str): 使用的设备
+            ignore_labels (list): 忽略的类别，默认为None
+        """
         if ignore_labels is None:
             ignore_labels = []
         self.num_class = num_class
@@ -35,7 +42,9 @@ class SegmentationMetric(object):
     def mean_pixel_precision(self):
 
         class_pre = self.class_pixel_precision()
-        mean_pre = class_pre[class_pre < float('inf')].mean()  # np.nanmean 求平均值，nan表示遇到Nan类型，其值取为0
+        mean_pre = class_pre[
+            class_pre < float("inf")
+        ].mean()  # np.nanmean 求平均值，nan表示遇到Nan类型，其值取为0
         return mean_pre  # 返回单个值，如：np.nanmean([0.90, 0.80, 0.96, nan, nan]) = (0.90 + 0.80 + 0.96） / 3 =  0.89
 
     def class_pixel_recall(self):
@@ -50,7 +59,9 @@ class SegmentationMetric(object):
         :return:
         """
         class_rec = self.class_pixel_recall()
-        mean_rec = class_rec[class_rec < float('inf')].mean()  # np.nanmean 求平均值，nan表示遇到Nan类型，其值取为0
+        mean_rec = class_rec[
+            class_rec < float("inf")
+        ].mean()  # np.nanmean 求平均值，nan表示遇到Nan类型，其值取为0
         return mean_rec  # 返回单个值，如：np.nanmean([0.90, 0.80, 0.96, nan, nan]) = (0.90 + 0.80 + 0.96） / 3 =  0.89
 
     def intersection_over_union(self):
@@ -58,7 +69,9 @@ class SegmentationMetric(object):
         # IoU = TP / (TP + FP + FN)
         intersection = torch.diag(self.confusion_matrix)  # 取对角元素的值，返回列表
         # axis = 1表示混淆矩阵行的值，返回列表； axis = 0表示取混淆矩阵列的值，返回列表
-        union = self.confusion_matrix.sum(dim=1) + self.confusion_matrix.sum(dim=0) - self.confusion_matrix.diag()
+        union = (
+            self.confusion_matrix.sum(dim=1) + self.confusion_matrix.sum(dim=0) - self.confusion_matrix.diag()
+        )
         class_iou = intersection / union  # 返回列表，其值为各个类别的IoU
         return class_iou
 
@@ -67,7 +80,7 @@ class SegmentationMetric(object):
         # 去除忽略标签的IoU
         valid_label = [label for label in range(self.num_class) if label not in self.ignore_labels]
         iou = iou[valid_label]
-        miou = iou[iou < float('inf')].mean()  # 求各类别IoU的平均
+        miou = iou[iou < float("inf")].mean()  # 求各类别IoU的平均
         return miou
 
     def frequency_weighted_intersection_over_union(self):
@@ -76,8 +89,11 @@ class SegmentationMetric(object):
         FWIOU =     [(TP+FN)/(TP+FP+TN+FN)] *[TP / (TP + FP + FN)]
         """
         freq = self.confusion_matrix.sum(dim=1) / self.confusion_matrix.sum()
-        iu = self.confusion_matrix.diag() / self.confusion_matrix.sum(dim=1) + self.confusion_matrix.sum(
-            dim=0) - self.confusion_matrix.diag()
+        iu = (
+            self.confusion_matrix.diag() / self.confusion_matrix.sum(dim=1)
+            + self.confusion_matrix.sum(dim=0)
+            - self.confusion_matrix.diag()
+        )
         fw_iou = (freq[freq > 0] * iu[freq > 0]).sum()
         return fw_iou
 
@@ -93,7 +109,7 @@ class SegmentationMetric(object):
 
     def mean_f1_score(self):
         f1_score = self.f1_score()
-        mean_f1_score = f1_score[f1_score < float('inf')].mean()
+        mean_f1_score = f1_score[f1_score < float("inf")].mean()
         return mean_f1_score
 
     def get_confusion_matrix(self, img_predict, img_label):
@@ -106,9 +122,9 @@ class SegmentationMetric(object):
         # remove classes from unlabeled pixels in gt image and predict
         mask = (img_label >= 0) & (img_label < self.num_class)
         for IgLabel in self.ignore_labels:
-            mask &= (img_label != IgLabel)
+            mask &= img_label != IgLabel
         label = self.num_class * img_label[mask] + img_predict[mask]
-        count = torch.bincount(label, minlength=self.num_class ** 2)
+        count = torch.bincount(label, minlength=self.num_class**2)
         confusion_matrix = count.view(self.num_class, self.num_class)
         return confusion_matrix
 

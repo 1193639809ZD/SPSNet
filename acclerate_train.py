@@ -33,9 +33,7 @@ def main(name):
             in_channel=args.in_channel, out_channel=args.out_channel, spc=args.spc
         )
     elif args.model_name == "UMobileNet":
-        model = spsnet.__dict__["UMobileNet"](
-            in_channel=args.in_channel, out_channel=args.out_channel
-        )
+        model = spsnet.__dict__["UMobileNet"](in_channel=args.in_channel, out_channel=args.out_channel)
     elif args.model_name == "UNetV2":
         # 预训练模型
         pretrained_path = r"weights/pvt_v2_b2.pth"
@@ -49,9 +47,7 @@ def main(name):
     elif args.model_name == "BRRNet":
         model = BRRNet(in_channels=args.in_channel, out_channels=args.out_channel)
     elif args.model_name == "Deeplabv3plus":
-        model = deeplabv3plus.modeling.__dict__["deeplabv3plus_mobilenet"](
-            num_classes=1, output_stride=16
-        )
+        model = deeplabv3plus.modeling.__dict__["deeplabv3plus_mobilenet"](num_classes=1, output_stride=16)
     elif args.model_name == "SegNet":
         model = SegNet(in_channel=args.in_channel, out_channel=args.out_channel)
     else:
@@ -62,9 +58,7 @@ def main(name):
     ELoss = EntropyLoss()
 
     # 加载optimizer
-    optimizer = optim.__dict__[args.optimizer](
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    )
+    optimizer = optim.__dict__[args.optimizer](model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # 加载scheduler
     lr_scheduler = optim.lr_scheduler.__dict__[args.lr_scheduler](
@@ -82,11 +76,7 @@ def main(name):
         best_miou = checkpoint["best_miou"]
         model.load_state_dict(checkpoint["state_dict"], strict=False)
         optimizer.load_state_dict(checkpoint["optimizer"])
-        print(
-            "=> loaded checkpoint '{}' (epoch {})".format(
-                args.pretrain, checkpoint["epoch"]
-            )
-        )
+        print("=> loaded checkpoint '{}' (epoch {})".format(args.pretrain, checkpoint["epoch"]))
         # 删除checkpoint
         del checkpoint
 
@@ -95,18 +85,14 @@ def main(name):
         dataset_train = WHUBuilding(root=config.whu, mode="train")
         dataset_val = WHUBuilding(root=config.whu, mode="test")
     elif args.dataset == "Massachusetts_Buildings_Dataset":
-        dataset_train = MassachuseetsBuilding(root=config.massachuseets, mode="train")
-        dataset_val = MassachuseetsBuilding(root=config.massachuseets, mode="test")
-    train_dataloader = DataLoader(
-        dataset_train, batch_size=args.batch_size, num_workers=2, shuffle=True
-    )
+        dataset_train = MassachuseetsBuilding(root=config.mas_building, mode="train")
+        dataset_val = MassachuseetsBuilding(root=config.mas_building, mode="test")
+    train_dataloader = DataLoader(dataset_train, batch_size=args.batch_size, num_workers=2, shuffle=True)
     val_dataloader = DataLoader(dataset_val, batch_size=2, num_workers=2, shuffle=False)
 
     # 使用accelerate封装
-    model, optimizer, train_dataloader, val_dataloader, lr_scheduler = (
-        accelerator.prepare(
-            model, optimizer, train_dataloader, val_dataloader, lr_scheduler
-        )
+    model, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
+        model, optimizer, train_dataloader, val_dataloader, lr_scheduler
     )
     # start train
     for epoch in range(start_epoch, args.epochs):
@@ -119,9 +105,7 @@ def main(name):
         train_loss = metrics.MetricTracker()
 
         # iterate over data
-        loader = tqdm(
-            train_dataloader, desc=f"training Epoch {epoch + 1}/{args.epochs}"
-        )
+        loader = tqdm(train_dataloader, desc=f"training Epoch {epoch + 1}/{args.epochs}")
         for idx, data in enumerate(loader):
 
             # get the image and wrap in Variable
@@ -181,9 +165,7 @@ def main(name):
                 )
 
             # 存储每一轮模型
-            save_path = os.path.join(
-                checkpoint_dir, "%s_checkpoint_%04depoch.pt" % (name, epoch + 1)
-            )
+            save_path = os.path.join(checkpoint_dir, "%s_checkpoint_%04depoch.pt" % (name, epoch + 1))
             # accelerate多gpu，需要改动，模型会多个module封装
             torch.save(
                 {
@@ -284,25 +266,13 @@ if __name__ == "__main__":
             "SegNet",
         ],
     )
-    parser.add_argument(
-        "--pretrain", default=r"", help="path to latest checkpoint (default: none)"
-    )
-    parser.add_argument(
-        "--in_channel", default=3, type=int, help="the number of input data channel"
-    )
-    parser.add_argument(
-        "--out_channel", default=1, type=int, help="the number of classes"
-    )
-    parser.add_argument(
-        "--spc", type=int, default=3, help="the channel of super pixel segment plug"
-    )
+    parser.add_argument("--pretrain", default=r"", help="path to latest checkpoint (default: none)")
+    parser.add_argument("--in_channel", default=3, type=int, help="the number of input data channel")
+    parser.add_argument("--out_channel", default=1, type=int, help="the number of classes")
+    parser.add_argument("--spc", type=int, default=3, help="the channel of super pixel segment plug")
     # optimizer参数
-    parser.add_argument(
-        "--optimizer", type=str, default="Adam", choices=["RMSprop", "Adam"]
-    )
-    parser.add_argument(
-        "--lr", type=float, default=0.001, help="learning rate (default: 0.01)"
-    )
+    parser.add_argument("--optimizer", type=str, default="Adam", choices=["RMSprop", "Adam"])
+    parser.add_argument("--lr", type=float, default=0.001, help="learning rate (default: 0.01)")
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight_decay", type=float, default=1e-5)
     # scheduler参数
